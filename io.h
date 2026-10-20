@@ -1,5 +1,8 @@
 #ifndef INCLUDE_IO_H
 #define INCLUDE_IO_H
+#include <stdint.h>
+
+uint8_t inb(uint16_t port);
 
 /**
  * Sends a byte to an I/O port.

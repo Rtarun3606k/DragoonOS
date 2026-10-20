@@ -1,0 +1,14 @@
+#include <stdint.h>
+#include "io.h"
+
+#define PIT_COMMAND 0x43
+#define PIT_CHANNEL0 0x40
+#define PIT_FREQUENCY 1193182
+
+void timer_initialize(uint32_t frequency) {
+    uint32_t divisor = PIT_FREQUENCY / frequency;
+
+    outb(PIT_COMMAND, 0x36);
+    outb(PIT_CHANNEL0, divisor & 0xFF);
+    outb(PIT_CHANNEL0, (divisor >> 8) & 0xFF);
+}

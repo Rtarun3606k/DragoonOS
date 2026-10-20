@@ -1,6 +1,8 @@
 #ifndef FRAMEBUFFER_H
 #define FRAMEBUFFER_H
 
-int write(char *buf, unsigned int len);
+int fb_write(const char *buf, unsigned int len);
+void fb_backspace(void);
+void fb_clear(void);
 
 #endif

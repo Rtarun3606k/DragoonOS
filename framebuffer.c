@@ -78,7 +78,7 @@ static void fb_scroll(void) {
   cursor_position -= VGA_WIDTH;
 }
 
-int write(char *buf, unsigned int len) {
+int fb_write(const char *buf, unsigned int len) {
   unsigned int i;
 
   for (i = 0; i < len; i++) {
@@ -102,4 +102,27 @@ int write(char *buf, unsigned int len) {
 
   fb_move_cursor(cursor_position);
   return (int)len;
+}
+
+void fb_backspace(void) {
+
+  if (cursor_position == 0) {
+    return;
+  }
+
+  cursor_position--;
+
+  fb_write_cell(cursor_position * 2, ' ', FRAME_BUFFER_GREEN,
+                Frame_Buffer_Dark_Grey);
+
+  fb_move_cursor(cursor_position);
+}
+
+void fb_clear(void) {
+  unsigned int i = 0;
+  for (i = 0; i < VGA_HEIGHT * VGA_WIDTH; i++) {
+    fb_write_cell(i * 2, ' ', FRAME_BUFFER_GREEN, FRAME_BUFFER_DARK_GREY);
+  }
+  cursor_position = 0;
+  fb_move_cursor(cursor_position);
 }
