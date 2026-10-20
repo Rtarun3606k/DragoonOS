@@ -10,7 +10,7 @@ KERNEL      := $(BUILD_DIR)/kernel.elf
 ISO_IMAGE   := os.iso
 
 CFLAGS := -m32 -std=gnu11 -ffreestanding \
-          -nostdlib -nostdinc -fno-builtin \
+          -nostdlib -fno-builtin \
           -fno-stack-protector -nostartfiles \
           -nodefaultlibs -Wall -Wextra -Werror
 
@@ -39,12 +39,24 @@ $(BUILD_DIR)/framebuffer.o: framebuffer.c framebuffer.h io.h | $(BUILD_DIR)
 $(BUILD_DIR)/serial.o: serial.c serial.h io.h | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+$(BUILD_DIR)/log.o: log.c log.h framebuffer.h serial.h | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/gdt.o: gdt.s | $(BUILD_DIR)
+	$(NASM) -f elf32 $< -o $@
+
+$(BUILD_DIR)/gdt_c.o: gdt.c gdt.h | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 # Link the kernel
 $(KERNEL): $(BUILD_DIR)/loader.o \
            $(BUILD_DIR)/kmain.o \
            $(BUILD_DIR)/io.o \
            $(BUILD_DIR)/framebuffer.o \
            $(BUILD_DIR)/serial.o \
+					 $(BUILD_DIR)/log.o \
+					 $(BUILD_DIR)/gdt_c.o \
+					 $(BUILD_DIR)/gdt.o \
            link.ld
 	$(LD) -T link.ld -m elf_i386 \
 		$(BUILD_DIR)/loader.o \
@@ -52,6 +64,9 @@ $(KERNEL): $(BUILD_DIR)/loader.o \
 		$(BUILD_DIR)/io.o \
 		$(BUILD_DIR)/framebuffer.o \
 		$(BUILD_DIR)/serial.o \
+		$(BUILD_DIR)/log.o \
+		$(BUILD_DIR)/gdt.o \
+		$(BUILD_DIR)/gdt_c.o \
 		-o $@
 
 # Copy the kernel into the ISO staging directory

@@ -1,0 +1,7 @@
+// global description table
+#ifndef GDT_H
+#define GDT_H
+
+void gdt_initialize(void);
+
+#endif
