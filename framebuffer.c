@@ -126,3 +126,8 @@ void fb_clear(void) {
   cursor_position = 0;
   fb_move_cursor(cursor_position);
 }
+
+void fb_disable_cursor(void) {
+  outb(0x3D4, 0x0A);
+  outb(0x3D5, 0x20);
+}

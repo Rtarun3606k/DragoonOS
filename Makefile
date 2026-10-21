@@ -12,104 +12,54 @@ ISO_IMAGE   := os.iso
 CFLAGS := -m32 -std=gnu11 -ffreestanding \
           -nostdlib -fno-builtin \
           -fno-stack-protector -nostartfiles \
-          -nodefaultlibs -Wall -Wextra -Werror
+          -nodefaultlibs -Wall -Wextra -Werror \
+          -Iinclude
+
+ASFLAGS := -f elf32
+LDFLAGS := -T link.ld -m elf_i386
+
+C_SOURCES := $(wildcard src/kernel/*.c) \
+             $(wildcard src/cpu/*.c) \
+             $(wildcard src/drivers/*.c)
+
+ASM_SOURCES := $(wildcard src/boot/*.s) \
+               $(wildcard src/arch/*.s) \
+               $(wildcard src/cpu/*.s)
+
+# Use distinct names for C and assembly objects.
+# This prevents gdt.c and gdt.s from overwriting each other.
+C_OBJECTS := $(patsubst src/%.c,$(BUILD_DIR)/%.c.o,$(C_SOURCES))
+ASM_OBJECTS := $(patsubst src/%.s,$(BUILD_DIR)/%.s.o,$(ASM_SOURCES))
+
+LOADER_OBJECT := $(BUILD_DIR)/boot/loader.s.o
+OTHER_OBJECTS := $(filter-out $(LOADER_OBJECT),$(ASM_OBJECTS)) \
+                 $(C_OBJECTS)
+OBJECTS := $(LOADER_OBJECT) $(OTHER_OBJECTS)
 
 .PHONY: all kernel iso run clean
 
 all: iso
 
-# Create the build directory
-$(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
+# Compile C files
+$(BUILD_DIR)/%.c.o: src/%.c
+	mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
-# Assembly objects
-$(BUILD_DIR)/loader.o: loader.s | $(BUILD_DIR)
-	$(NASM) -f elf32 $< -o $@
-
-$(BUILD_DIR)/io.o: io.s | $(BUILD_DIR)
-	$(NASM) -f elf32 $< -o $@
-
-# C objects
-$(BUILD_DIR)/kmain.o: kmain.c framebuffer.h serial.h gdt.h idt.h| $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/framebuffer.o: framebuffer.c framebuffer.h io.h | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/serial.o: serial.c serial.h io.h | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/log.o: log.c log.h framebuffer.h serial.h | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/gdt.o: gdt.s | $(BUILD_DIR)
-	$(NASM) -f elf32 $< -o $@
-
-$(BUILD_DIR)/gdt_c.o: gdt.c gdt.h | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/idt.o: idt.s | $(BUILD_DIR)
-	$(NASM) -f elf32 $< -o $@
-
-$(BUILD_DIR)/idt_c.o: idt.c idt.h | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/interrupt_stubs.o: interrupt_stubs.s | $(BUILD_DIR)
-	$(NASM) -f elf32 $< -o $@
-
-$(BUILD_DIR)/interrupts.o: interrupts.c interrupts.h log.h | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-
-$(BUILD_DIR)/pic.o: pic.c pic.h io.h | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/timer.o: timer.c timer.h io.h | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/keyboard.o: keyboard.c keyboard.h io.h pic.h log.h | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+# Assemble NASM files
+$(BUILD_DIR)/%.s.o: src/%.s
+	mkdir -p $(dir $@)
+	$(NASM) $(ASFLAGS) $< -o $@
 
 # Link the kernel
-$(KERNEL): $(BUILD_DIR)/loader.o \
-           $(BUILD_DIR)/kmain.o \
-           $(BUILD_DIR)/io.o \
-           $(BUILD_DIR)/framebuffer.o \
-           $(BUILD_DIR)/serial.o \
-					 $(BUILD_DIR)/log.o \
-					 $(BUILD_DIR)/gdt_c.o \
-					 $(BUILD_DIR)/gdt.o \
-					 $(BUILD_DIR)/idt.o \
-					 $(BUILD_DIR)/idt_c.o \
-					 $(BUILD_DIR)/interrupt_stubs.o \
-					 $(BUILD_DIR)/interrupts.o \
-					 $(BUILD_DIR)/pic.o \
-					 $(BUILD_DIR)/timer.o \
-					 $(BUILD_DIR)/keyboard.o \
-           link.ld
-	$(LD) -T link.ld -m elf_i386 \
-		$(BUILD_DIR)/loader.o \
-		$(BUILD_DIR)/kmain.o \
-		$(BUILD_DIR)/io.o \
-		$(BUILD_DIR)/framebuffer.o \
-		$(BUILD_DIR)/serial.o \
-		$(BUILD_DIR)/log.o \
-		$(BUILD_DIR)/gdt.o \
-		$(BUILD_DIR)/gdt_c.o \
-		$(BUILD_DIR)/idt.o \
-		$(BUILD_DIR)/idt_c.o \
-		$(BUILD_DIR)/interrupt_stubs.o \
-		$(BUILD_DIR)/interrupts.o \
-		$(BUILD_DIR)/pic.o \
-		$(BUILD_DIR)/timer.o \
-		$(BUILD_DIR)/keyboard.o \
-		-o $@
+$(KERNEL): $(OBJECTS) link.ld
+	$(LD) $(LDFLAGS) -o $@ $(OBJECTS)
 
-# Copy the kernel into the ISO staging directory
+# Stage kernel for GRUB
 kernel: $(KERNEL)
+	mkdir -p $(ISO_DIR)/boot
 	cp $(KERNEL) $(ISO_DIR)/boot/kernel.elf
 
-# Generate a bootable ISO
+# Generate ISO
 iso: kernel
 	$(GENISOIMAGE) -R \
 		-b boot/grub/stage2_eltorito \
@@ -126,7 +76,8 @@ iso: kernel
 run: iso
 	$(BOCHS) -f bochs.txt -q
 
-# Remove generated build artifacts
+# Clean generated files
 clean:
 	rm -rf $(BUILD_DIR) $(ISO_IMAGE)
 
+-include $(C_OBJECTS:.o=.d)

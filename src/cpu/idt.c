@@ -99,16 +99,13 @@ void idt_initialize(void) {
     idt_install_exception(i, handlers[i]);
   }
 
-  void (*irq_handlers[16])(void) = {
-    isr32, isr33, isr34, isr35,
-    isr36, isr37, isr38, isr39,
-    isr40, isr41, isr42, isr43,
-    isr44, isr45, isr46, isr47
-};
+  void (*irq_handlers[16])(void) = {isr32, isr33, isr34, isr35, isr36, isr37,
+                                    isr38, isr39, isr40, isr41, isr42, isr43,
+                                    isr44, isr45, isr46, isr47};
 
-for (int i = 0; i < 16; i++) {
+  for (int i = 0; i < 16; i++) {
     idt_install_exception(32 + i, irq_handlers[i]);
-}
+  }
 
   idt_load((uint32_t)&idtr);
 }
