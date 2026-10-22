@@ -19,12 +19,18 @@ ASFLAGS := -f elf32
 LDFLAGS := -T link.ld -m elf_i386
 
 C_SOURCES := $(wildcard src/kernel/*.c) \
+             $(wildcard src/modules/*.c) \
              $(wildcard src/cpu/*.c) \
              $(wildcard src/drivers/*.c)
+
 
 ASM_SOURCES := $(wildcard src/boot/*.s) \
                $(wildcard src/arch/*.s) \
                $(wildcard src/cpu/*.s)
+
+
+MODULE_SOURCE := src/modules/program.s
+MODULE_BINARY := $(ISO_DIR)/modules/program
 
 # Use distinct names for C and assembly objects.
 # This prevents gdt.c and gdt.s from overwriting each other.
@@ -39,6 +45,11 @@ OBJECTS := $(LOADER_OBJECT) $(OTHER_OBJECTS)
 .PHONY: all kernel iso run clean
 
 all: iso
+
+
+$(MODULE_BINARY): $(MODULE_SOURCE)
+	mkdir -p $(dir $@)
+	$(NASM) -f bin $< -o $@
 
 # Compile C files
 $(BUILD_DIR)/%.c.o: src/%.c
@@ -60,7 +71,7 @@ kernel: $(KERNEL)
 	cp $(KERNEL) $(ISO_DIR)/boot/kernel.elf
 
 # Generate ISO
-iso: kernel
+iso: kernel  $(MODULE_BINARY)
 	$(GENISOIMAGE) -R \
 		-b boot/grub/stage2_eltorito \
 		-no-emul-boot \

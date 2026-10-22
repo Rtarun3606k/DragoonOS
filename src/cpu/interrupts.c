@@ -12,7 +12,7 @@ void interrupt_handler(struct interrupt_frame *frame) {
   if (vector >= 32 && vector <= 47) {
     uint8_t irq = vector - 32;
 
-    log_message(LOG_DEBUG, LOG_OUTPUT_SERIAL, "Hardware IRQ %u received", irq);
+    // log_message(LOG_DEBUG, LOG_OUTPUT_SERIAL, "Hardware IRQ %u received", irq);
 
     if (irq == 0) {
       ticks++;
