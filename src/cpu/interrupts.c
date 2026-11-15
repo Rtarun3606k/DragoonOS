@@ -2,6 +2,7 @@
 #include "keyboard.h"
 #include "log.h"
 #include "pic.h"
+#include "syscall.h"
 
 static volatile uint32_t ticks = 0;
 uint32_t timer_ticks(void) { return ticks; }
@@ -9,10 +10,16 @@ uint32_t timer_ticks(void) { return ticks; }
 void interrupt_handler(struct interrupt_frame *frame) {
   uint32_t vector = frame->interrupt_number;
 
+  if (vector == 0x80) {
+    syscall_handler(frame);
+    return;
+  }
+
   if (vector >= 32 && vector <= 47) {
     uint8_t irq = vector - 32;
 
-    // log_message(LOG_DEBUG, LOG_OUTPUT_SERIAL, "Hardware IRQ %u received", irq);
+    // log_message(LOG_DEBUG, LOG_OUTPUT_SERIAL, "Hardware IRQ %u received",
+    // irq);
 
     if (irq == 0) {
       ticks++;

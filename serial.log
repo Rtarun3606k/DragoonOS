@@ -1,5 +1,28 @@
 DragoonOS serial output works!
+[INFO] Memory map length: 144 bytes
+[INFO] Memory region: base_hi=0x0 base_lo=0x0 length_hi=0x0 length_lo=0x9f000 type=1
+[INFO] Memory region: base_hi=0x0 base_lo=0x9f000 length_hi=0x0 length_lo=0x1000 type=2
+[INFO] Memory region: base_hi=0x0 base_lo=0xe8000 length_hi=0x0 length_lo=0x18000 type=2
+[INFO] Memory region: base_hi=0x0 base_lo=0x100000 length_hi=0x0 length_lo=0x1ef0000 type=1
+[INFO] Memory region: base_hi=0x0 base_lo=0x1ff0000 length_hi=0x0 length_lo=0x10000 type=3
+[INFO] Memory region: base_hi=0x0 base_lo=0xfffc0000 length_hi=0x0 length_lo=0x40000 type=2
+[INFO] Physical frame allocator initialized
+[INFO] Total frames: 8176
+[INFO] Free frames: 7869
+[INFO] Paging test: virtual memory read/write successful
+[INFO] Paging test: page unmapped and frame released
+[INFO] --- Starting Heap Tests ---
+[INFO] Ptr1: 0xd0000010, Ptr2: 0xd0000090, Ptr3: 0xd0000170
+[INFO] Ptr4 (should be = old Ptr2): 0xd0000090
+[INFO] Ptr1 Realloc'd (likely new address): 0xd00002b0
+[INFO] Huge Ptr: 0xd00004c0
+[INFO] Initial free frames: 7868, Final free frames: 7868
+[INFO] Heap Test: Frame shrinking SUCCESS
+[INFO] --- Heap Tests Complete ---
+[INFO] Page mapping result: 0
+[INFO] Unmapped physical frame: 0x131000
 [INFO] Before GDT initialization
+[INFO] GDT and TSS loaded successfully
 [INFO] GDT loaded successfully
 [INFO] Before IDT initialization
 [INFO] IDT loaded successfully
@@ -9,29 +32,24 @@ DragoonOS serial output works!
 [INFO] Keyboard handler initialized
 [INFO] Keyboard IRQ1 and timer IRQ0 unmasked
 [INFO] CPU interrupts enabled
-[INFO] Module start: 0x108000
-[INFO] Module end: 0x108006
-[INFO] Module size: 6 bytes
-[INFO] Executing module at 0x108000
-[INFO] Module returned: 0xdeadbeef
-[DEBUG] Keyboard scancode: 0x23
-[DEBUG] Keyboard scancode: 0xa3
-[DEBUG] Keyboard scancode: 0x1e
-[DEBUG] Keyboard scancode: 0x9e
+[INFO] Loading ELF module (6580 bytes) at phys 0x133000
+[INFO] ELF: launching Ring 3 entry 0x80481b1
+========================================
+  DragoonOS Ring 3 User-Space Terminal  
+========================================
+Type 'help' for available commands.
+
+dragoon-user> [DEBUG] Keyboard scancode: 0x2e
+[DEBUG] Keyboard scancode: 0xae
 [DEBUG] Keyboard scancode: 0x26
 [DEBUG] Keyboard scancode: 0xa6
-[DEBUG] Keyboard scancode: 0x14
-[DEBUG] Keyboard scancode: 0x15
-[DEBUG] Keyboard scancode: 0x95
-[DEBUG] Keyboard scancode: 0x94
-[DEBUG] Keyboard scancode: 0x1c
-[DEBUG] Keyboard scancode: 0x9c
-[DEBUG] Keyboard scancode: 0x23
-[DEBUG] Keyboard scancode: 0xa3
+[DEBUG] Keyboard scancode: 0x12
+[DEBUG] Keyboard scancode: 0x92
 [DEBUG] Keyboard scancode: 0x1e
 [DEBUG] Keyboard scancode: 0x9e
-[DEBUG] Keyboard scancode: 0x26
-[DEBUG] Keyboard scancode: 0xa6
-[DEBUG] Keyboard scancode: 0x14
-[DEBUG] Keyboard scancode: 0x94
+[DEBUG] Keyboard scancode: 0x13
+[DEBUG] Keyboard scancode: 0x93
 [DEBUG] Keyboard scancode: 0x1c
+dragoon-user> [DEBUG] Keyboard scancode: 0x9c
+[DEBUG] Keyboard scancode: 0x38
+[DEBUG] Keyboard scancode: 0xb8

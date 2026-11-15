@@ -2,20 +2,20 @@
 #include "io.h"
 
 #define Frame_Buffer_Green 2
-#define Frame_Buffer_Dark_Grey 8
+#define Frame_Buffer_Dark_Grey 0
 
 #define VGA_WIDTH 80
 #define VGA_HEIGHT 25
 
 #define FRAME_BUFFER_GREEN 2
-#define FRAME_BUFFER_DARK_GREY 8
+#define FRAME_BUFFER_DARK_GREY 0
 
 #define FB_COMMAND_PORT 0x3D4
 #define FB_DATA_PORT 0x3D5
 #define FB_HIGH_BYTE_COMMAND 14
 #define FB_LOW_BYTE_COMMAND 15
 
-static volatile char *fb = (char *)0xB8000;
+static volatile char *fb = (char *)0xC00B8000;
 static unsigned int cursor_position = 0;
 
 // frame buffer
@@ -118,7 +118,22 @@ void fb_backspace(void) {
   fb_move_cursor(cursor_position);
 }
 
+// void fb_clear(void) {
+//   unsigned int i = 0;
+//   for (i = 0; i < VGA_HEIGHT * VGA_WIDTH; i++) {
+//     fb_write_cell(i * 2, ' ', FRAME_BUFFER_GREEN, FRAME_BUFFER_DARK_GREY);
+//   }
+//   cursor_position = 0;
+//   fb_move_cursor(cursor_position);
+// }
 void fb_clear(void) {
+  /* Disable VGA hardware blink (bit 3 of Attribute Mode Control 0x10) */
+  inb(0x3DA);
+  outb(0x3C0, 0x10);
+  unsigned char attr = inb(0x3C1);
+  outb(0x3C0, attr & ~0x08);
+  outb(0x3C0, 0x20);
+
   unsigned int i = 0;
   for (i = 0; i < VGA_HEIGHT * VGA_WIDTH; i++) {
     fb_write_cell(i * 2, ' ', FRAME_BUFFER_GREEN, FRAME_BUFFER_DARK_GREY);

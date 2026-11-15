@@ -15,7 +15,7 @@
 #define FB_HIGH_BYTE_COMMAND 14
 #define FB_LOW_BYTE_COMMAND 15
 
-static volatile char *fb = (char *)0xB8000;
+static volatile char *fb = (char *)0xC00B8000;
 static unsigned int cursor_position = 0;
 
 // frame buffer

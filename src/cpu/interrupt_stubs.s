@@ -67,9 +67,17 @@ ISR_NOERR 44
 ISR_NOERR 45
 ISR_NOERR 46
 ISR_NOERR 47
+ISR_NOERR 128
 
 interrupt_common:
     pusha
+
+    ; Ensure kernel data segments (0x10) are active inside Ring 0
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
 
     mov ebx, esp
     and esp, 0xFFFFFFF0
@@ -81,6 +89,17 @@ interrupt_common:
     mov esp, ebx
     popa
     add esp, 8
+
+    ; If returning to Ring 3 (saved CS has RPL == 3), restore user data segments (0x23)
+    test dword [esp + 4], 3
+    jz .return_kernel
+    mov ax, 0x23
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+
+.return_kernel:
     iretd
 
 

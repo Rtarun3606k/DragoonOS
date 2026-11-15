@@ -70,6 +70,7 @@ extern void isr44(void);
 extern void isr45(void);
 extern void isr46(void);
 extern void isr47(void);
+extern void isr128(void);
 
 static void idt_set_entry(uint8_t vector, uint32_t handler_address,
                           uint16_t selector, uint8_t type_attributes) {
@@ -79,6 +80,10 @@ static void idt_set_entry(uint8_t vector, uint32_t handler_address,
   idt[vector].reserved = 0;
   idt[vector].type_attributes = type_attributes;
   idt[vector].offset_high = (handler_address >> 16) & 0xFFFF;
+}
+
+static void idt_install_syscall(int vector, void (*handler)(void)) {
+  idt_set_entry(vector, (uint32_t)handler, 0x08, 0xEE);
 }
 
 static void idt_install_exception(int vector, void (*handler)(void)) {
@@ -106,6 +111,8 @@ void idt_initialize(void) {
   for (int i = 0; i < 16; i++) {
     idt_install_exception(32 + i, irq_handlers[i]);
   }
+
+  idt_install_syscall(0x80, isr128);
 
   idt_load((uint32_t)&idtr);
 }

@@ -23,14 +23,19 @@ C_SOURCES := $(wildcard src/kernel/*.c) \
              $(wildcard src/cpu/*.c) \
              $(wildcard src/drivers/*.c)
 
-
 ASM_SOURCES := $(wildcard src/boot/*.s) \
                $(wildcard src/arch/*.s) \
                $(wildcard src/cpu/*.s)
 
-
-MODULE_SOURCE := src/modules/program.s
+USER_SOURCE := user/terminal.c
+USER_LINKER := user/linker.ld
+USER_OBJECT := $(BUILD_DIR)/user/terminal.o
 MODULE_BINARY := $(ISO_DIR)/modules/program
+
+USER_CFLAGS := -m32 -std=gnu11 -ffreestanding \
+               -fno-pie -fno-pic -fno-stack-protector \
+               -Wall -Wextra -Werror
+USER_LDFLAGS := -m elf_i386 -no-pie -T $(USER_LINKER)
 
 # Use distinct names for C and assembly objects.
 # This prevents gdt.c and gdt.s from overwriting each other.
@@ -46,17 +51,21 @@ OBJECTS := $(LOADER_OBJECT) $(OTHER_OBJECTS)
 
 all: iso
 
-
-$(MODULE_BINARY): $(MODULE_SOURCE)
+# Compile and link Ring 3 user-space ELF module
+$(USER_OBJECT): $(USER_SOURCE)
 	mkdir -p $(dir $@)
-	$(NASM) -f bin $< -o $@
+	$(CC) $(USER_CFLAGS) -c $< -o $@
 
-# Compile C files
+$(MODULE_BINARY): $(USER_OBJECT) $(USER_LINKER)
+	mkdir -p $(dir $@)
+	$(LD) $(USER_LDFLAGS) $(USER_OBJECT) -o $@
+
+# Compile kernel C files
 $(BUILD_DIR)/%.c.o: src/%.c
 	mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
-# Assemble NASM files
+# Assemble kernel NASM files
 $(BUILD_DIR)/%.s.o: src/%.s
 	mkdir -p $(dir $@)
 	$(NASM) $(ASFLAGS) $< -o $@
@@ -71,7 +80,7 @@ kernel: $(KERNEL)
 	cp $(KERNEL) $(ISO_DIR)/boot/kernel.elf
 
 # Generate ISO
-iso: kernel  $(MODULE_BINARY)
+iso: kernel $(MODULE_BINARY)
 	$(GENISOIMAGE) -R \
 		-b boot/grub/stage2_eltorito \
 		-no-emul-boot \
@@ -89,6 +98,6 @@ run: iso
 
 # Clean generated files
 clean:
-	rm -rf $(BUILD_DIR) $(ISO_IMAGE)
+	rm -rf $(BUILD_DIR) $(ISO_IMAGE) $(MODULE_BINARY)
 
 -include $(C_OBJECTS:.o=.d)
