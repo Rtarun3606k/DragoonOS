@@ -41,6 +41,23 @@ typedef struct {
   uint32_t p_align;
 } __attribute__((packed)) elf32_phdr_t;
 
-int elf_load_and_exec(const void *image, unsigned int size);
+/* Address-space layout produced by a successful load. */
+struct elf_load_info {
+  uint32_t entry;
+  uint32_t stack_top;
+  uint32_t brk_start;
+};
+
+/*
+ * Loads an ELF image into an existing user page directory.  The directory is
+ * activated temporarily (the kernel half is shared) and restored afterwards.
+ * The image buffer must live in kernel-shared memory.
+ */
+int elf_load_image_into(unsigned int pd, const void *image, unsigned int size,
+                        struct elf_load_info *info);
+
+/* Reads path from FAT32 and loads it into pd. */
+int elf_load_file_into(unsigned int pd, const char *path,
+                       struct elf_load_info *info);
 
 #endif

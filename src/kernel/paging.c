@@ -6,6 +6,15 @@
 #define HIGHER_HALF 0xC0000000U
 #define PAGE_ENTRIES 1024U
 #define SCRATCH_PD_VIRT 0xDFFFF000U
+#define SCRATCH_PT_VIRT 0xDFFFE000U
+
+/*
+ * The kernel heap lives at 0xD0000000.  Its page tables are created at boot
+ * and shared by every user page directory, so heap mappings made later (task
+ * kernel stacks, ELF file buffers, ...) are visible in every address space.
+ */
+#define HEAP_PDE_FIRST (0xD0000000U >> 22)
+#define HEAP_PDE_LAST (0xDFFFFFFFU >> 22)
 
 extern unsigned char page_directory[];
 static unsigned int kernel_pd_phys = 0;
@@ -13,6 +22,28 @@ static unsigned int kernel_pd_phys = 0;
 /* With recursive paging, the active PD is always at 0xFFFFF000 */
 static unsigned int *get_page_directory(void) {
   return (unsigned int *)0xFFFFF000U;
+}
+
+static void ensure_kernel_table(unsigned int *directory,
+                                unsigned int index) {
+  if (directory[index] & PAGE_PRESENT) {
+    return;
+  }
+
+  unsigned int table_physical = frame_alloc();
+  if (table_physical == 0) {
+    return;
+  }
+
+  directory[index] = table_physical | PAGE_PRESENT | PAGE_WRITABLE;
+
+  unsigned int *table =
+      (unsigned int *)(0xFFC00000U + (index * PAGE_SIZE));
+  __asm__ volatile("invlpg (%0)" : : "r"((unsigned int)table) : "memory");
+
+  for (unsigned int i = 0; i < PAGE_ENTRIES; i++) {
+    table[i] = 0;
+  }
 }
 
 void paging_init(void) {
@@ -25,6 +56,11 @@ void paging_init(void) {
 
   /* Flush TLB */
   __asm__ volatile("mov %cr3, %eax; mov %eax, %cr3");
+
+  /* Pre-create the shared heap page tables before any user directory exists. */
+  for (unsigned int index = HEAP_PDE_FIRST; index <= HEAP_PDE_LAST; index++) {
+    ensure_kernel_table(pd, index);
+  }
 }
 
 int map_page(unsigned int virtual_address, unsigned int physical_address,
@@ -147,6 +183,74 @@ unsigned int paging_create_user_directory(void) {
 
 void paging_switch_directory(unsigned int pd_physical) {
   __asm__ volatile("mov %0, %%cr3" : : "r"(pd_physical) : "memory");
+}
+
+unsigned int paging_current_directory(void) {
+  unsigned int value;
+
+  __asm__ volatile("mov %%cr3, %0" : "=r"(value));
+
+  return value;
+}
+
+/*
+ * Releases every user frame, every user page table and the page directory
+ * itself.  Safe to call while another task's directory is active; if pd is
+ * the active directory the kernel directory is installed first.
+ */
+void paging_destroy_user_directory(unsigned int pd_physical) {
+  if (pd_physical == 0 || pd_physical == kernel_pd_phys) {
+    return;
+  }
+
+  unsigned int old_cr3 = paging_current_directory();
+  if (old_cr3 == pd_physical) {
+    paging_switch_directory(kernel_pd_phys);
+  }
+
+  if (map_page(SCRATCH_PD_VIRT, pd_physical, PAGE_WRITABLE) != 0) {
+    return;
+  }
+
+  unsigned int *pd = (unsigned int *)SCRATCH_PD_VIRT;
+
+  for (unsigned int i = 0; i < 768; i++) {
+    if (!(pd[i] & PAGE_PRESENT)) {
+      continue;
+    }
+
+    if (pd[i] & 0x80U) {
+      /* A 4 MiB user page; free the frame it points at. */
+      frame_free(pd[i] & PAGE_MASK);
+      pd[i] = 0;
+      continue;
+    }
+
+    unsigned int table_physical = pd[i] & PAGE_MASK;
+
+    if (map_page(SCRATCH_PT_VIRT, table_physical, PAGE_WRITABLE) == 0) {
+      unsigned int *table = (unsigned int *)SCRATCH_PT_VIRT;
+
+      for (unsigned int j = 0; j < PAGE_ENTRIES; j++) {
+        if (table[j] & PAGE_PRESENT) {
+          frame_free(table[j] & PAGE_MASK);
+          table[j] = 0;
+        }
+      }
+
+      unmap_page(SCRATCH_PT_VIRT);
+    }
+
+    frame_free(table_physical);
+    pd[i] = 0;
+  }
+
+  unmap_page(SCRATCH_PD_VIRT);
+  frame_free(pd_physical);
+
+  if (old_cr3 == pd_physical) {
+    paging_switch_directory(kernel_pd_phys);
+  }
 }
 
 void paging_switch_to_kernel_directory(void) {

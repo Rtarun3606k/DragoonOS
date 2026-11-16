@@ -11,6 +11,8 @@ unsigned int unmap_page(unsigned int virtual_address);
 int is_page_mapped(unsigned int virtual_address);
 
 unsigned int paging_create_user_directory(void);
+void paging_destroy_user_directory(unsigned int pd_physical);
+unsigned int paging_current_directory(void);
 void paging_switch_directory(unsigned int pd_physical);
 void paging_switch_to_kernel_directory(void);
 

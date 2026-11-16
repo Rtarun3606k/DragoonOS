@@ -93,11 +93,13 @@ interrupt_common:
     ; If returning to Ring 3 (saved CS has RPL == 3), restore user data segments (0x23)
     test dword [esp + 4], 3
     jz .return_kernel
+    push eax
     mov ax, 0x23
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
+    pop eax
 
 .return_kernel:
     iretd

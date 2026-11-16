@@ -1,3 +1,4 @@
+#include "ff.h"
 #include "framebuffer.h"
 #include "gdt.h"
 #include "heap.h"
@@ -16,6 +17,8 @@
 
 #define HIGHER_HALF_BASE 0xC0000000
 #define TEST_VIRTUAL_ADDRESS 0xD0000000U
+
+static FATFS root_fs;
 
 static void log_memory_map(multiboot_info_t *mbi) {
 
@@ -197,6 +200,14 @@ void kmain(unsigned int magic, unsigned int multiboot_info_address) {
   paging_init();
   paging_test();
   heap_test();
+
+  FRESULT mount_res = f_mount(&root_fs, "", 1);
+  if (mount_res == FR_OK) {
+    log_message(LOG_INFO, LOG_OUTPUT_SERIAL, "FAT32 root filesystem mounted");
+  } else {
+    log_message(LOG_ERROR, LOG_OUTPUT_SERIAL, "FAT32 mount failed: %d",
+                mount_res);
+  }
   // unsigned int before =
   // free_frames; // Don't access static free_frames directly.
   // unsigned int before = memory_get_free_frames();
@@ -240,7 +251,7 @@ void kmain(unsigned int magic, unsigned int multiboot_info_address) {
   timer_initialize(100);
   log_message(LOG_INFO, LOG_OUTPUT_SERIAL, "PIT initialized at 100 Hz");
 
- keyboard_initialize();
+  keyboard_initialize();
   pic_unmask_irq(1);
   pic_unmask_irq(0);
 
