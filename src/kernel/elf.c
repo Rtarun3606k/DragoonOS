@@ -6,8 +6,7 @@
 #include "paging.h"
 
 #define PAGE_SIZE 4096U
-#define USER_STACK_TOP 0xC0000000U
-#define USER_STACK_PAGES 4U
+#define USER_STACK_PAGES (USER_STACK_SIZE / PAGE_SIZE)
 #define MAX_ELF_FILE_SZ (4U * 1024U * 1024U)
 
 //-------------------------------------------------------------------------------------

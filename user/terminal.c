@@ -20,15 +20,11 @@
 #define O_TRUNC 0x08U
 #define O_APPEND 0x10U
 
+#define MAX_TERM_ARGS 16
+
 struct user_meminfo {
   unsigned int free_frames;
   unsigned int frame_size;
-};
-
-struct user_dirent {
-  char name[64];
-  uint32_t size;
-  uint8_t is_dir;
 };
 
 static inline int32_t syscall3(uint32_t num, uint32_t arg1, uint32_t arg2,
@@ -95,59 +91,68 @@ static void write_uint(uint32_t val) {
   }
 }
 
-static void cmd_ls(const char *path) {
-  struct user_dirent ent;
-  uint32_t idx = 0;
+//-------------------------------------------------------------------------------------
+// Splits buf in place on spaces/tabs.  argv is NULL-terminated.
+//-------------------------------------------------------------------------------------
+static int tokenize(char *buf, char *argv[], int max_args) {
+  int argc = 0;
+  char *p = buf;
 
-  while (idx < 256U) {
-    int32_t res = syscall3(SYS_READDIR, (uint32_t)(uintptr_t)path, idx,
-                           (uint32_t)(uintptr_t)&ent);
-
-    write_str("res=");
-    write_uint((uint32_t)res);
-    write_str(" ");
-
-    if (res < 0) {
-      write_str("ls: cannot open directory\n");
-      return;
+  while (*p != '\0') {
+    while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') {
+      p++;
     }
-    if (res == 0) {
-      if (idx == 0) {
-        write_str("(empty)\n");
-      }
-      return;
+    if (*p == '\0') {
+      break;
+    }
+    if (argc >= max_args) {
+      break;
     }
 
-    write_str(ent.is_dir ? "[DIR]  " : "[FILE] ");
-    write_str(ent.name);
-    if (!ent.is_dir) {
-      write_str(" (");
-      write_uint(ent.size);
-      write_str(" B)");
+    argv[argc++] = p;
+
+    while (*p != '\0' && *p != ' ' && *p != '\t' && *p != '\n' &&
+           *p != '\r') {
+      p++;
     }
-    idx++;
-    write_str("\n");
+    if (*p != '\0') {
+      *p++ = '\0';
+    }
   }
+
+  argv[argc] = 0;
+  return argc;
 }
 
-static void cmd_cat(const char *path) {
-  int32_t fd = syscall3(SYS_OPEN, (uint32_t)(uintptr_t)path, O_RDONLY, 0U);
-  if (fd < 0) {
-    write_str("cat: file not found\n");
-    return;
+//-------------------------------------------------------------------------------------
+// Builds "/bin/<cmd>.bin" into out.
+//-------------------------------------------------------------------------------------
+static int build_bin_path(const char *cmd, char *out, uint32_t capacity) {
+  const char *prefix = "/bin/";
+  const char *suffix = ".bin";
+  uint32_t len = 0;
+
+  while (*prefix != '\0') {
+    if (len + 1U >= capacity) {
+      return 0;
+    }
+    out[len++] = *prefix++;
+  }
+  while (*cmd != '\0') {
+    if (len + 1U >= capacity) {
+      return 0;
+    }
+    out[len++] = *cmd++;
+  }
+  while (*suffix != '\0') {
+    if (len + 1U >= capacity) {
+      return 0;
+    }
+    out[len++] = *suffix++;
   }
 
-  char buf[128];
-  int32_t bytes;
-  while ((bytes = syscall3(SYS_READ, (uint32_t)fd, (uint32_t)(uintptr_t)buf,
-                           sizeof(buf))) > 0) {
-    syscall3(SYS_WRITE, 1U, (uint32_t)(uintptr_t)buf, (uint32_t)bytes);
-  }
-  if (bytes < 0) {
-    write_str("cat: read error\n");
-  }
-
-  syscall3(SYS_CLOSE, (uint32_t)fd, 0U, 0U);
+  out[len] = '\0';
+  return 1;
 }
 
 static void cmd_write(char *args) {
@@ -171,6 +176,11 @@ static void cmd_write(char *args) {
   }
 
   uint32_t len = str_len(text);
+
+  while (len > 0 && (text[len - 1U] == '\n' || text[len - 1U] == '\r')) {
+    len--;
+  }
+
   if (len > 0) {
     syscall3(SYS_WRITE, (uint32_t)fd, (uint32_t)(uintptr_t)text, len);
   }
@@ -179,8 +189,46 @@ static void cmd_write(char *args) {
   write_str("Saved.\n");
 }
 
+//-------------------------------------------------------------------------------------
+// Spawns path with the given argv, waits for it and optionally reports the
+// exit status.  report_status selects the "run" wording on failure.
+//-------------------------------------------------------------------------------------
+static int32_t run_program(uint32_t path, char *const *argv, int report_status) {
+  int32_t pid = syscall3(SYS_SPAWN, path, (uint32_t)(uintptr_t)argv, 0U);
+
+  if (pid < 0) {
+    if (report_status) {
+      write_str("run: failed to execute ELF binary\n");
+    } else {
+      write_str("unknown command: ");
+      write_str(argv[0]);
+      write_str("\n");
+    }
+    return -1;
+  }
+
+  int32_t status = -1;
+  int32_t waited =
+      syscall3(SYS_WAIT, (uint32_t)pid, (uint32_t)(uintptr_t)&status, 0U);
+
+  if (report_status) {
+    if (waited < 0) {
+      write_str("run: wait failed\n");
+    } else {
+      write_str("run: child exited with status ");
+      write_uint((uint32_t)status);
+      write_str("\n");
+    }
+  }
+
+  return waited;
+}
+
 void _start(void) {
   char line[128];
+  char work[128];
+  char resolved[160];
+  char *argv[MAX_TERM_ARGS + 1];
 
   write_str("========================================\n");
   write_str("  DragoonOS Ring 3 User-Space Terminal  \n");
@@ -196,19 +244,30 @@ void _start(void) {
     }
     line[n] = '\0';
 
-    if (str_eq(line, "help")) {
+    /* Tokenise a copy so `write` can still see the original spacing. */
+    for (int32_t i = 0; i <= n; i++) {
+      work[i] = line[i];
+    }
+
+    int argc = tokenize(work, argv, MAX_TERM_ARGS);
+    if (argc == 0) {
+      continue;
+    }
+
+    if (str_eq(argv[0], "help")) {
       write_str("Commands:\n");
       write_str("  help               - Show this help\n");
       write_str("  clear              - Clear screen\n");
       write_str("  meminfo            - Show free physical memory\n");
-      write_str("  ls [path]          - List directory contents\n");
-      write_str("  cat <path>         - Print file contents\n");
       write_str("  write <path> <txt> - Create or overwrite file\n");
-      write_str("  run <path>         - Run ELF binary as a child process\n");
+      write_str("  ls [path]          - List directory (runs /bin/ls.bin)\n");
+      write_str("  cat [path...]      - Print files or stdin (/bin/cat.bin)\n");
+      write_str("  run <path> [args]  - Run ELF with arguments\n");
+      write_str("  <cmd> [args]       - Run /bin/<cmd>.bin\n");
       write_str("  exit               - Exit to kernel shell\n");
-    } else if (str_eq(line, "clear")) {
+    } else if (str_eq(argv[0], "clear")) {
       syscall3(SYS_CLEAR, 0U, 0U, 0U);
-    } else if (str_eq(line, "meminfo")) {
+    } else if (str_eq(argv[0], "meminfo")) {
       struct user_meminfo info;
       if (syscall3(SYS_MEMINFO, (uint32_t)(uintptr_t)&info, 0U, 0U) == 0) {
         write_str("Free frames: ");
@@ -217,35 +276,28 @@ void _start(void) {
         write_uint((info.free_frames * info.frame_size) / 1024U);
         write_str(" KB)\n");
       }
-    } else if (str_eq(line, "ls")) {
-      cmd_ls("/");
-    } else if (starts_with(line, "ls ")) {
-      cmd_ls(line + 3);
-    } else if (starts_with(line, "cat ")) {
-      cmd_cat(line + 4);
-    } else if (starts_with(line, "write ")) {
-      cmd_write(line + 6);
-    } else if (str_eq(line, "exit")) {
-      syscall3(SYS_EXIT, 0U, 0U, 0U);
-
-    } else if (starts_with(line, "run ")) {
-      int32_t pid = syscall3(SYS_SPAWN, (uint32_t)(uintptr_t)(line + 4), 0U, 0U);
-
-      if (pid < 0) {
-        write_str("run: failed to execute ELF binary\n");
+    } else if (str_eq(argv[0], "write")) {
+      if (argc < 3) {
+        write_str("Usage: write <path> <text>\n");
       } else {
-        int32_t status = -1;
-        int32_t waited =
-            syscall3(SYS_WAIT, (uint32_t)pid, (uint32_t)(uintptr_t)&status, 0U);
-
-        if (waited < 0) {
-          write_str("run: wait failed\n");
-        } else {
-          write_str("run: child exited with status ");
-          write_uint((uint32_t)status);
-          write_str("\n");
-        }
+        cmd_write(line + 6);
       }
+    } else if (str_eq(argv[0], "exit")) {
+      syscall3(SYS_EXIT, 0U, 0U, 0U);
+    } else if (str_eq(argv[0], "run")) {
+      if (argc < 2) {
+        write_str("Usage: run <path> [args...]\n");
+      } else {
+        run_program((uint32_t)(uintptr_t)argv[1], &argv[1], 1);
+      }
+    } else if (starts_with(argv[0], "/")) {
+      run_program((uint32_t)(uintptr_t)argv[0], argv, 0);
+    } else if (build_bin_path(argv[0], resolved, sizeof(resolved))) {
+      run_program((uint32_t)(uintptr_t)resolved, argv, 0);
+    } else {
+      write_str("unknown command: ");
+      write_str(argv[0]);
+      write_str("\n");
     }
   }
 }

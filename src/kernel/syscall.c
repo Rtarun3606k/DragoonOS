@@ -1,6 +1,7 @@
 #include "syscall.h"
 #include "elf.h"
 #include "framebuffer.h"
+#include "heap.h"
 #include "keyboard.h"
 #include "log.h"
 #include "memory.h"
@@ -91,35 +92,49 @@ static uint32_t sys_read(uint32_t fd, uint32_t buf_addr, uint32_t len) {
     return syscall_fs_read(fd, buf_addr, len);
   }
 
-  if (fd != 0 || len == 0) {
-    return (fd == 0 && len == 0) ? 0 : (uint32_t)-1;
+  if (fd != 0) {
+    return (uint32_t)-1;
   }
 
-  if (!is_valid_user_buffer(buf_addr, len)) {
+  if (len == 0) {
+    return 0;
+  }
+
+  if (!user_range_mapped(buf_addr, len)) {
     log_message(LOG_ERROR, LOG_OUTPUT_SERIAL,
                 "sys_read: invalid user buffer 0x%x (len=%u)", buf_addr, len);
     return (uint32_t)-1;
   }
 
-  char kbuf[128];
-  unsigned int cap = len < sizeof(kbuf) ? len : sizeof(kbuf);
-
-  /* Re-enable interrupts so IRQ1 (keyboard) can wake hlt inside
-   * keyboard_read_line */
-  __asm__ volatile("sti");
-  int count = keyboard_read_line(kbuf, cap);
-  __asm__ volatile("cli");
-
-  if (count < 0) {
-    return (uint32_t)-1;
-  }
-
   char *user_buf = (char *)buf_addr;
-  for (int i = 0; i <= count; i++) {
-    user_buf[i] = kbuf[i];
-  }
 
-  return (uint32_t)count;
+  /*
+   * Canonical stdin: return whatever has been typed so far (at least one
+   * line), or park the task until IRQ1 pushes data / an EOF marker.  The
+   * keyboard handler wakes us via task_wake_stdin().
+   */
+  for (;;) {
+    int count = keyboard_stdin_read(user_buf, len);
+
+    if (count > 0) {
+      return (uint32_t)count;
+    }
+
+    if (keyboard_stdin_eof()) {
+      keyboard_stdin_clear_eof();
+      return 0;
+    }
+
+    struct task *task = task_current();
+
+    if (!task) {
+      return (uint32_t)-1;
+    }
+
+    task->wait_stdin = 1;
+    task->state = TASK_WAITING;
+    task_schedule();
+  }
 }
 
 //-------------------------------------------------------------------------------------
@@ -215,8 +230,11 @@ static uint32_t sys_brk(uint32_t new_brk) {
 //---------------------------------------------------------------------------------------------------
 //---------------------------------------------------------------------------------------------------
 //---------------------------------------------------------------------------------------------------
-static uint32_t sys_spawn(uint32_t path_addr) {
+static uint32_t sys_spawn(uint32_t path_addr, uint32_t argv_addr) {
   char path[USER_PATH_MAX];
+  const char *kernel_argv[MAX_ARGS + 1];
+  char *arg_store = 0;
+  int argc = 0;
 
   if (!copy_user_string(path_addr, path, sizeof(path))) {
     log_message(LOG_ERROR, LOG_OUTPUT_SERIAL,
@@ -224,13 +242,73 @@ static uint32_t sys_spawn(uint32_t path_addr) {
     return (uint32_t)-1;
   }
 
+  kernel_argv[0] = 0;
+
+  if (argv_addr != 0) {
+    for (int i = 0; i <= MAX_ARGS; i++) {
+      uint32_t slot = argv_addr + (uint32_t)i * sizeof(uint32_t);
+
+      if (!user_range_mapped(slot, sizeof(uint32_t))) {
+        log_message(LOG_ERROR, LOG_OUTPUT_SERIAL,
+                    "sys_spawn: invalid argv pointer 0x%x", slot);
+        goto fail;
+      }
+
+      uint32_t user_arg = *(const uint32_t *)slot;
+
+      if (user_arg == 0) {
+        kernel_argv[i] = 0;
+        break;
+      }
+
+      if (i == MAX_ARGS) {
+        log_message(LOG_ERROR, LOG_OUTPUT_SERIAL,
+                    "sys_spawn: too many arguments (max %d)", MAX_ARGS);
+        goto fail;
+      }
+
+      if (!arg_store) {
+        arg_store = (char *)kmalloc((unsigned int)MAX_ARGS * MAX_ARG_LEN);
+        if (!arg_store) {
+          log_message(LOG_ERROR, LOG_OUTPUT_SERIAL,
+                      "sys_spawn: out of memory copying argv");
+          goto fail;
+        }
+      }
+
+      char *dst = arg_store + (uint32_t)i * MAX_ARG_LEN;
+
+      if (!copy_user_string(user_arg, dst, MAX_ARG_LEN)) {
+        log_message(LOG_ERROR, LOG_OUTPUT_SERIAL,
+                    "sys_spawn: invalid argument pointer 0x%x", user_arg);
+        goto fail;
+      }
+
+      kernel_argv[i] = dst;
+      argc++;
+    }
+
+    kernel_argv[argc] = 0;
+  }
+
   struct task *child;
 
-  if (!task_spawn(path, &child)) {
-    return (uint32_t)-1;
+  if (!task_spawn(path, argv_addr != 0 ? kernel_argv : 0, &child)) {
+    goto fail;
+  }
+
+  if (arg_store) {
+    kfree(arg_store);
   }
 
   return (uint32_t)child->pid;
+
+fail:
+  if (arg_store) {
+    kfree(arg_store);
+  }
+
+  return (uint32_t)-1;
 }
 
 //---------------------------------------------------------------------------------------------------
@@ -274,7 +352,7 @@ static uint32_t sys_exec(uint32_t path_addr) {
 
   struct task *child;
 
-  if (!task_spawn(path, &child)) {
+  if (!task_spawn(path, 0, &child)) {
     return (uint32_t)-1;
   }
 
@@ -357,11 +435,31 @@ void syscall_handler(struct interrupt_frame *frame) {
     break;
 
   case SYS_SPAWN:
-    frame->eax = sys_spawn(frame->ebx);
+    frame->eax = sys_spawn(frame->ebx, frame->ecx);
     break;
 
   case SYS_WAIT:
     frame->eax = sys_wait(frame->ebx, frame->ecx);
+    break;
+
+  case SYS_LSEEK:
+    frame->eax = syscall_fs_lseek(frame->ebx, (int32_t)frame->ecx, frame->edx);
+    break;
+
+  case SYS_STAT:
+    frame->eax = syscall_fs_stat(frame->ebx, frame->ecx);
+    break;
+
+  case SYS_FSTAT:
+    frame->eax = syscall_fs_fstat(frame->ebx, frame->ecx);
+    break;
+
+  case SYS_MKDIR:
+    frame->eax = syscall_fs_mkdir(frame->ebx);
+    break;
+
+  case SYS_UNLINK:
+    frame->eax = syscall_fs_unlink(frame->ebx);
     break;
 
   default:

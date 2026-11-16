@@ -43,7 +43,10 @@ USER_LDFLAGS := -m elf_i386 -no-pie -T $(USER_LINKER)
 TINYGOROOT    ?= $(abspath user/go/.tinygo-root)
 GO_TOOLCHAIN  ?= go1.24.0
 TINYGO_TARGET := $(abspath user/go/dragoon.json)
-GO_RUNTIME    := $(wildcard user/go/*.c) $(wildcard user/go/*.S) $(wildcard user/go/*.go)
+GO_RUNTIME    := $(wildcard user/go/*.c) $(wildcard user/go/*.S) $(wildcard user/go/*.go) \
+                 $(wildcard user/go/patches/*.c) \
+                 $(wildcard user/go/patches/src/os/*.go) \
+                 $(wildcard user/go/patches/src/runtime/*.go)
 GO_CMDS       := $(notdir $(wildcard user/go/cmd/*))
 GO_ELFS       := $(addprefix $(BUILD_DIR)/go/,$(addsuffix .elf,$(GO_CMDS)))
 

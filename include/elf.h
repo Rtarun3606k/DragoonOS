@@ -8,6 +8,10 @@
 #define EM_386 3U
 #define PT_LOAD 1U
 
+/* User-space layout shared by the ELF loader and the argv builder. */
+#define USER_STACK_TOP 0xC0000000U
+#define USER_STACK_SIZE (4U * 4096U)
+
 typedef struct {
   uint32_t e_ident_magic;
   uint8_t e_ident_class;

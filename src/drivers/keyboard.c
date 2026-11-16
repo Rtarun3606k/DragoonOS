@@ -3,9 +3,11 @@
 #include "io.h"
 #include "log.h"
 #include "pic.h"
+#include "task.h"
 #include <stdint.h>
 
 #define KEYBOARD_BUFFER_SIZE 128
+#define STDIN_BUFFER_SIZE 512
 
 static int shift_pressed = 0;
 static int ctrl_pressed = 0;
@@ -18,9 +20,57 @@ static volatile unsigned int keyboard_buffer_length = 0;
 static char completed_line[KEYBOARD_BUFFER_SIZE];
 static volatile int line_ready = 0;
 
+/*
+ * Canonical stdin queue shared by Ring 3 readers.  The keyboard IRQ is the
+ * only producer; SYS_READ drains it from the task that owns the buffer.
+ * head == tail means empty.  A one-byte gap distinguishes full from empty.
+ */
+static char stdin_queue[STDIN_BUFFER_SIZE];
+static volatile unsigned int stdin_head = 0;
+static volatile unsigned int stdin_tail = 0;
+static volatile int stdin_eof = 0;
+
 void keyboard_initialize(void) {
   log_message(LOG_INFO, LOG_OUTPUT_SERIAL, "Keyboard handler initialized");
 }
+
+//-------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------
+static void stdin_push(char c) {
+  unsigned int next = (stdin_tail + 1U) % STDIN_BUFFER_SIZE;
+
+  if (next == stdin_head) {
+    /* Queue full: drop the character rather than corrupting the ring. */
+    return;
+  }
+
+  stdin_queue[stdin_tail] = c;
+  stdin_tail = next;
+}
+
+int keyboard_stdin_read(char *buffer, unsigned int capacity) {
+  if (!buffer || capacity == 0) {
+    return 0;
+  }
+
+  unsigned int count = 0;
+
+  while (count < capacity && stdin_head != stdin_tail) {
+    buffer[count++] = stdin_queue[stdin_head];
+    stdin_head = (stdin_head + 1U) % STDIN_BUFFER_SIZE;
+  }
+
+  return (int)count;
+}
+
+int keyboard_stdin_available(void) {
+  return stdin_head != stdin_tail;
+}
+
+int keyboard_stdin_eof(void) { return stdin_eof; }
+
+void keyboard_stdin_clear_eof(void) { stdin_eof = 0; }
 
 static char scancode_to_char(uint8_t scancode, int shifted) {
   static const char keymap_normal[128] = {
@@ -84,8 +134,14 @@ static void submit_line(void) {
     line_ready = 1;
   }
 
+  for (unsigned int i = 0; i < keyboard_buffer_length; i++) {
+    stdin_push(keyboard_buffer[i]);
+  }
+  stdin_push('\n');
+
   keyboard_buffer_length = 0;
   fb_write("\n", 1);
+  task_wake_stdin();
 }
 
 void keyboard_handle_interrupt(void) {
@@ -143,6 +199,19 @@ void keyboard_handle_interrupt(void) {
         fb_write("^C", 2);
         keyboard_buffer_length = 0;
         submit_line();
+        pic_send_eoi(1);
+        return;
+      }
+
+      /* Ctrl+D signals EOF to stdin readers.  A partially typed line is
+       * delivered first, like a terminal in canonical mode. */
+      if (ctrl_pressed && (c == 'd' || c == 'D')) {
+        if (keyboard_buffer_length > 0) {
+          submit_line();
+        } else {
+          stdin_eof = 1;
+          task_wake_stdin();
+        }
         pic_send_eoi(1);
         return;
       }
