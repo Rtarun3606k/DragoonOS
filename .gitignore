@@ -1,1 +1,29 @@
 user/go/.tinygo-root/
+
+# Build artifacts
+/build/
+/dist/
+
+# Disk images and virtual disks
+*.img
+*.iso
+*.bin
+*.vdi
+*.vmdk
+*.qcow2
+*.raw
+
+# Compiled binaries and object files
+*.o
+*.d
+*.elf
+*.a
+*.so
+
+# Logs
+*.log
+
+# Editor and OS files
+.DS_Store
+*.swp
+*.swo
