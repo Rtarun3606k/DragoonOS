@@ -15,5 +15,6 @@ int keyboard_stdin_read(char *buffer, unsigned int capacity);
 int keyboard_stdin_available(void);
 int keyboard_stdin_eof(void);
 void keyboard_stdin_clear_eof(void);
+void keyboard_set_raw_mode(int raw);
 
 #endif

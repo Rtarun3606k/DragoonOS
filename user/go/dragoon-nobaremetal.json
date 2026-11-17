@@ -1,0 +1,25 @@
+{
+  "llvm-target": "i386-unknown-none-elf",
+  "cpu": "i686",
+  "features": "-mmx,-sse,-sse2,-sse3,-ssse3,-sse4.1,-sse4.2,-avx,-avx2",
+  "build-tags": ["dragoon"],
+  "goos": "linux",
+  "goarch": "386",
+  "gc": "conservative",
+  "scheduler": "none",
+  "linker": "ld",
+  "rtlib": "compiler-rt",
+  "automatic-stack-size": false,
+  "default-stack-size": 16384,
+  "cflags": [
+    "-m32",
+    "-ffreestanding",
+    "-fno-pic",
+    "-fno-pie",
+    "-fno-stack-protector",
+    "-mno-sse",
+    "-mno-mmx"
+  ],
+  "ldflags": ["-m", "elf_i386", "-no-pie", "-T", "user/linker.ld"],
+  "extra-files": ["user/go/runtime_dragoon.c"]
+}

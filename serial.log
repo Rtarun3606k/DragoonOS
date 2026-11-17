@@ -8,7 +8,7 @@ DragoonOS serial output works!
 [INFO] Memory region: base_hi=0x0 base_lo=0xfffc0000 length_hi=0x0 length_lo=0x40000 type=2
 [INFO] Physical frame allocator initialized
 [INFO] Total frames: 8176
-[INFO] Free frames: 7869
+[INFO] Free frames: 7851
 [INFO] Paging test: virtual memory read/write successful
 [INFO] Paging test: page unmapped and frame released
 [INFO] --- Starting Heap Tests ---
@@ -16,11 +16,13 @@ DragoonOS serial output works!
 [INFO] Ptr4 (should be = old Ptr2): 0xd0000090
 [INFO] Ptr1 Realloc'd (likely new address): 0xd00002b0
 [INFO] Huge Ptr: 0xd00004c0
-[INFO] Initial free frames: 7868, Final free frames: 7868
+[INFO] Initial free frames: 7787, Final free frames: 7787
 [INFO] Heap Test: Frame shrinking SUCCESS
 [INFO] --- Heap Tests Complete ---
+[INFO] ATA: primary master disk initialized
+[INFO] FAT32 root filesystem mounted
 [INFO] Page mapping result: 0
-[INFO] Unmapped physical frame: 0x131000
+[INFO] Unmapped physical frame: 0x185000
 [INFO] Before GDT initialization
 [INFO] GDT and TSS loaded successfully
 [INFO] GDT loaded successfully
@@ -32,24 +34,43 @@ DragoonOS serial output works!
 [INFO] Keyboard handler initialized
 [INFO] Keyboard IRQ1 and timer IRQ0 unmasked
 [INFO] CPU interrupts enabled
-[INFO] Loading ELF module (6580 bytes) at phys 0x133000
-[INFO] ELF: launching Ring 3 entry 0x80481b1
+[INFO] Loading ELF module (9696 bytes) at phys 0x146000
+[INFO] Starting init task (pid 1)
+[INFO] Task 1 entering Ring 3 at 0x8048674 (parent 0)
 ========================================
   DragoonOS Ring 3 User-Space Terminal  
 ========================================
 Type 'help' for available commands.
 
-dragoon-user> [DEBUG] Keyboard scancode: 0x2e
-[DEBUG] Keyboard scancode: 0xae
-[DEBUG] Keyboard scancode: 0x26
-[DEBUG] Keyboard scancode: 0xa6
-[DEBUG] Keyboard scancode: 0x12
-[DEBUG] Keyboard scancode: 0x92
-[DEBUG] Keyboard scancode: 0x1e
-[DEBUG] Keyboard scancode: 0x9e
-[DEBUG] Keyboard scancode: 0x13
-[DEBUG] Keyboard scancode: 0x93
-[DEBUG] Keyboard scancode: 0x1c
-dragoon-user> [DEBUG] Keyboard scancode: 0x9c
-[DEBUG] Keyboard scancode: 0x38
-[DEBUG] Keyboard scancode: 0xb8
+[INFO] Task: spawned pid 2 (/bin/sh.bin) from pid 1
+[INFO] Task 2 entering Ring 3 at 0x8053041 (parent 1)
+dragoon:/> dragoon:/> cp home/touch.md  /hello/dragoon:/> cp home/touch.md  /hello/
+[INFO] Task: spawned pid 3 (/bin/cp.bin) from pid 2
+[INFO] Task 3 entering Ring 3 at 0x8050599 (parent 2)
+[INFO] User process 3 exited with status: 0
+[INFO] Task 2 reaped child 3 (status 0)
+dragoon:/> dragoon:/> cp home/touch.md  /hello/dragoon:/> cp home/touch.md  /hello/dragoon:/> cp home/touch.md  hello  dragoon:/> cp home/touch.md  hellodragoon:/> cp home/touch.md  /hello/dragoon:/> cp home/touch.md  /hello/dragoon:/>                          dragoon:/> dragoon:/> ldragoon:/> ldragoon:/> lsdragoon:/> lsdragoon:/> ls dragoon:/> ls dragoon:/> ls hdragoon:/> ls h
+hello/  home/
+dragoon:/> ls hdragoon:/> ls h
+hello/  home/
+dragoon:/> ls hdragoon:/> ls hdragoon:/> ls hedragoon:/> ls hedragoon:/> ls heldragoon:/> ls heldragoon:/> ls helldragoon:/> ls helldragoon:/> ls hellodragoon:/> ls hello
+[INFO] Task: spawned pid 3 (/bin/ls.bin) from pid 2
+[INFO] Task 3 entering Ring 3 at 0x8056e85 (parent 2)
+[FILE] testcp.txt (0 B)
+[FILE] touch.md (14 B)
+[INFO] User process 3 exited with status: 0
+[INFO] Task 2 reaped child 3 (status 0)
+dragoon:/> dragoon:/> cdragoon:/> cdragoon:/> cadragoon:/> cadragoon:/> catdragoon:/> catdragoon:/> cat dragoon:/> cat dragoon:/> cat  dragoon:/> cat  dragoon:/> cat  hdragoon:/> cat  hdragoon:/> cat  hedragoon:/> cat  hedragoon:/> cat  hello/dragoon:/> cat  hello/dragoon:/> cat  hello/tdragoon:/> cat  hello/t
+hello/testcp.txt  hello/touch.md
+dragoon:/> cat  hello/tdragoon:/> cat  hello/tdragoon:/> cat  hello/tedragoon:/> cat  hello/tedragoon:/> cat  hello/tesdragoon:/> cat  hello/tesdragoon:/> cat  hello/testcp.txt dragoon:/> cat  hello/testcp.txt 
+[INFO] Task: spawned pid 3 (/bin/cat.bin) from pid 2
+[INFO] Task 3 entering Ring 3 at 0x8056102 (parent 2)
+[INFO] User process 3 exited with status: 0
+[INFO] Task 2 reaped child 3 (status 0)
+dragoon:/> dragoon:/> cat  hello/testcp.txt dragoon:/> cat  hello/testcp.txt dragoon:/> cat  hello/testcp.txt wdragoon:/> cat  hello/testcp.txt wdragoon:/> cat  hello/testcp.txt  dragoon:/> cat  hello/testcp.txt dragoon:/> cat  hello/testcp.txt dragoon:/> cat  hello/testcp.txtdragoon:/> cat  hello/testcp.tx dragoon:/> cat  hello/testcp.txdragoon:/> cat  hello/testcp.t dragoon:/> cat  hello/testcp.tdragoon:/> cat  hello/testcp. dragoon:/> cat  hello/testcp.dragoon:/> cat  hello/testcp dragoon:/> cat  hello/testcpdragoon:/> cat  hello/testc dragoon:/> cat  hello/testcdragoon:/> cat  hello/test dragoon:/> cat  hello/testdragoon:/> cat  hello/tes dragoon:/> cat  hello/tesdragoon:/> cat  hello/te dragoon:/> cat  hello/tedragoon:/> cat  hello/t dragoon:/> cat  hello/tdragoon:/> cat  hello/ dragoon:/> cat  hello/dragoon:/> cat  hello/tdragoon:/> cat  hello/tdragoon:/> cat  hello/todragoon:/> cat  hello/todragoon:/> cat  hello/touch.md dragoon:/> cat  hello/touch.md 
+[INFO] Task: spawned pid 3 (/bin/cat.bin) from pid 2
+[INFO] Task 3 entering Ring 3 at 0x8056102 (parent 2)
+md test touch
+[INFO] User process 3 exited with status: 0
+[INFO] Task 2 reaped child 3 (status 0)
+dragoon:/> 

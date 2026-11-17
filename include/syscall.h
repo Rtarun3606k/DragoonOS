@@ -21,6 +21,9 @@
 #define SYS_FSTAT 16U
 #define SYS_MKDIR 17U
 #define SYS_UNLINK 18U
+#define SYS_CHDIR 19U
+#define SYS_GETCWD 20U
+#define SYS_TTY_MODE 21U
 
 /*
  * SYS_SPAWN (12): EBX = path, ECX = argv (NULL-terminated array of user
@@ -32,6 +35,12 @@
  * SYS_FSTAT (16): EBX = fd, ECX = struct user_stat pointer.
  * SYS_MKDIR (17): EBX = path.
  * SYS_UNLINK (18): EBX = path (file or empty directory).
+ * SYS_CHDIR (19): EBX = path (relative paths resolve against the caller's cwd).
+ * SYS_GETCWD (20): EBX = user buffer, ECX = buffer size.  Returns 0 and the
+ *                  NUL-terminated absolute cwd, or -1 if the buffer is too
+ *                  small / unmapped.
+ *
+ * All path-taking calls accept paths relative to the calling task's cwd.
  */
 
 #define O_RDONLY 0x01U

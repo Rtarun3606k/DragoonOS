@@ -13,6 +13,7 @@ static int shift_pressed = 0;
 static int ctrl_pressed = 0;
 static int caps_lock = 0;
 static int extended_scancode = 0;
+static volatile int stdin_raw_mode = 0;
 
 static char keyboard_buffer[KEYBOARD_BUFFER_SIZE];
 static volatile unsigned int keyboard_buffer_length = 0;
@@ -21,7 +22,7 @@ static char completed_line[KEYBOARD_BUFFER_SIZE];
 static volatile int line_ready = 0;
 
 /*
- * Canonical stdin queue shared by Ring 3 readers.  The keyboard IRQ is the
+ * Stdin queue shared by Ring 3 readers.  The keyboard IRQ is the
  * only producer; SYS_READ drains it from the task that owns the buffer.
  * head == tail means empty.  A one-byte gap distinguishes full from empty.
  */
@@ -34,9 +35,6 @@ void keyboard_initialize(void) {
   log_message(LOG_INFO, LOG_OUTPUT_SERIAL, "Keyboard handler initialized");
 }
 
-//-------------------------------------------------------------------------------------
-//-------------------------------------------------------------------------------------
-//-------------------------------------------------------------------------------------
 static void stdin_push(char c) {
   unsigned int next = (stdin_tail + 1U) % STDIN_BUFFER_SIZE;
 
@@ -47,6 +45,18 @@ static void stdin_push(char c) {
 
   stdin_queue[stdin_tail] = c;
   stdin_tail = next;
+}
+
+static void stdin_push_raw(const char *s, unsigned int len) {
+  for (unsigned int i = 0; i < len; i++) {
+    stdin_push(s[i]);
+  }
+  task_wake_stdin();
+}
+
+void keyboard_set_raw_mode(int raw) {
+  stdin_raw_mode = raw ? 1 : 0;
+  keyboard_buffer_length = 0;
 }
 
 int keyboard_stdin_read(char *buffer, unsigned int capacity) {
@@ -155,20 +165,56 @@ void keyboard_handle_interrupt(void) {
 
   if (extended_scancode) {
     extended_scancode = 0;
+
     if (scancode == 0x1D) {
       ctrl_pressed = 1;
     } else if (scancode == 0x9D) {
       ctrl_pressed = 0;
-    } else if (scancode == 0x35) {
-      /* Numpad '/' */
-      if (keyboard_buffer_length < KEYBOARD_BUFFER_SIZE - 1) {
-        keyboard_buffer[keyboard_buffer_length++] = '/';
-        fb_write("/", 1);
+    } else if (!(scancode & 0x80)) {
+      if (scancode == 0x35) {
+        /* Numpad '/' */
+        if (stdin_raw_mode) {
+          stdin_push_raw("/", 1);
+        } else if (keyboard_buffer_length < KEYBOARD_BUFFER_SIZE - 1) {
+          keyboard_buffer[keyboard_buffer_length++] = '/';
+          fb_write("/", 1);
+        }
+      } else if (scancode == 0x1C) {
+        /* Numpad Enter */
+        if (stdin_raw_mode) {
+          stdin_push_raw("\n", 1);
+        } else {
+          submit_line();
+        }
+      } else if (stdin_raw_mode) {
+        switch (scancode) {
+          case 0x48: /* Up */
+            stdin_push_raw("\x1b[A", 3);
+            break;
+          case 0x50: /* Down */
+            stdin_push_raw("\x1b[B", 3);
+            break;
+          case 0x4D: /* Right */
+            stdin_push_raw("\x1b[C", 3);
+            break;
+          case 0x4B: /* Left */
+            stdin_push_raw("\x1b[D", 3);
+            break;
+          case 0x47: /* Home */
+            stdin_push_raw("\x1b[H", 3);
+            break;
+          case 0x4F: /* End */
+            stdin_push_raw("\x1b[F", 3);
+            break;
+          case 0x53: /* Delete */
+            stdin_push_raw("\x1b[3~", 4);
+            break;
+          default:
+            break;
+        }
       }
-    } else if (scancode == 0x1C) {
-      /* Numpad Enter */
-      submit_line();
     }
+
     pic_send_eoi(1);
     return;
   }
@@ -184,6 +230,29 @@ void keyboard_handle_interrupt(void) {
   } else if (scancode == 0x3A) {
     caps_lock = !caps_lock;
   } else if (!(scancode & 0x80)) {
+    /* Raw mode: bypass canonical line buffer and VGA echo */
+    if (stdin_raw_mode) {
+      if (scancode == 0x0E) {
+        stdin_push_raw("\b", 1);
+      } else if (scancode == 0x1C) {
+        stdin_push_raw("\n", 1);
+      } else {
+        char c = scancode_to_char(scancode, shift_pressed);
+        if (ctrl_pressed && (c == 'c' || c == 'C')) {
+          char ctrl_c = 0x03;
+          stdin_push_raw(&ctrl_c, 1);
+        } else if (ctrl_pressed && (c == 'd' || c == 'D')) {
+          char ctrl_d = 0x04;
+          stdin_push_raw(&ctrl_d, 1);
+        } else if (c != '\0') {
+          stdin_push_raw(&c, 1);
+        }
+      }
+      pic_send_eoi(1);
+      return;
+    }
+
+    /* Canonical mode */
     if (scancode == 0x0E) {
       if (keyboard_buffer_length > 0) {
         keyboard_buffer_length--;

@@ -338,6 +338,41 @@ static uint32_t sys_wait(uint32_t pid, uint32_t status_addr) {
 }
 
 //---------------------------------------------------------------------------------------------------
+// Copies the calling task's canonical cwd into a user buffer.  Returns 0 on
+// success or -1 if the buffer is unmapped/too small.
+//---------------------------------------------------------------------------------------------------
+static uint32_t sys_getcwd(uint32_t buf_addr, uint32_t size) {
+  struct task *task = task_current();
+
+  if (!task || size == 0) {
+    return (uint32_t)-1;
+  }
+
+  if (!user_range_mapped(buf_addr, size)) {
+    return (uint32_t)-1;
+  }
+
+  const char *cwd = (task->cwd[0] == '/') ? task->cwd : "/";
+  uint32_t len = 0;
+
+  while (cwd[len] != '\0') {
+    len++;
+  }
+
+  if (len + 1U > size) {
+    return (uint32_t)-1;
+  }
+
+  char *buf = (char *)buf_addr;
+
+  for (uint32_t i = 0; i <= len; i++) {
+    buf[i] = cwd[i];
+  }
+
+  return 0;
+}
+
+//---------------------------------------------------------------------------------------------------
 // Legacy SYS_EXEC: spawn the program as a child and wait for it, leaving the
 // calling process and its address space intact.
 //---------------------------------------------------------------------------------------------------
@@ -369,8 +404,9 @@ static uint32_t sys_exec(uint32_t path_addr) {
 //-------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------
 static void sys_exit(int status) {
-  log_message(LOG_INFO, LOG_OUTPUT_SERIAL, "User process %d exited with status: %d",
-              task_current_pid(), status);
+  log_message(LOG_INFO, LOG_OUTPUT_SERIAL,
+              "User process %d exited with status: %d", task_current_pid(),
+              status);
 
   task_exit_current(status);
 }
@@ -380,8 +416,8 @@ static void sys_exit(int status) {
 //-------------------------------------------------------------------------------------
 void syscall_terminate_user(int status) {
   log_message(LOG_ERROR, LOG_OUTPUT_SERIAL,
-              "Terminating user process %d with status: %d",
-              task_current_pid(), status);
+              "Terminating user process %d with status: %d", task_current_pid(),
+              status);
 
   task_exit_current(status);
 }
@@ -460,6 +496,19 @@ void syscall_handler(struct interrupt_frame *frame) {
 
   case SYS_UNLINK:
     frame->eax = syscall_fs_unlink(frame->ebx);
+    break;
+
+  case SYS_CHDIR:
+    frame->eax = syscall_fs_chdir(frame->ebx);
+    break;
+
+  case SYS_GETCWD:
+    frame->eax = sys_getcwd(frame->ebx, frame->ecx);
+    break;
+
+  case SYS_TTY_MODE:
+    keyboard_set_raw_mode(frame->ebx != 0);
+    frame->eax = 0;
     break;
 
   default:

@@ -8,10 +8,12 @@
 #define SYS_OPEN 7U
 #define SYS_CLOSE 8U
 #define SYS_READDIR 9U
-#define SYS_BRK     10U
-#define SYS_EXEC    11U
-#define SYS_SPAWN   12U
-#define SYS_WAIT    13U
+#define SYS_BRK 10U
+#define SYS_EXEC 11U
+#define SYS_SPAWN 12U
+#define SYS_WAIT 13U
+#define SYS_CHDIR 19U
+#define SYS_GETCWD 20U
 
 #define O_RDONLY 0x01U
 #define O_WRONLY 0x02U
@@ -111,8 +113,7 @@ static int tokenize(char *buf, char *argv[], int max_args) {
 
     argv[argc++] = p;
 
-    while (*p != '\0' && *p != ' ' && *p != '\t' && *p != '\n' &&
-           *p != '\r') {
+    while (*p != '\0' && *p != ' ' && *p != '\t' && *p != '\n' && *p != '\r') {
       p++;
     }
     if (*p != '\0') {
@@ -155,6 +156,40 @@ static int build_bin_path(const char *cmd, char *out, uint32_t capacity) {
   return 1;
 }
 
+//-------------------------------------------------------------------------------------
+// Prints "dragoon:<cwd>> " using the kernel's per-task working directory.
+//-------------------------------------------------------------------------------------
+static void write_prompt(void) {
+  char cwd[256];
+
+  write_str("dragoon:");
+  if (syscall3(SYS_GETCWD, (uint32_t)(uintptr_t)cwd, sizeof(cwd), 0U) == 0) {
+    write_str(cwd);
+  } else {
+    write_str("/");
+  }
+  write_str("> ");
+}
+
+static void cmd_cd(const char *path) {
+  if (syscall3(SYS_CHDIR, (uint32_t)(uintptr_t)path, 0U, 0U) < 0) {
+    write_str("cd: ");
+    write_str(path);
+    write_str(": no such directory\n");
+  }
+}
+
+static void cmd_pwd(void) {
+  char cwd[256];
+
+  if (syscall3(SYS_GETCWD, (uint32_t)(uintptr_t)cwd, sizeof(cwd), 0U) == 0) {
+    write_str(cwd);
+    write_str("\n");
+  } else {
+    write_str("pwd: cannot determine working directory\n");
+  }
+}
+
 static void cmd_write(char *args) {
   char *space = args;
   while (*space != '\0' && *space != ' ') {
@@ -193,7 +228,8 @@ static void cmd_write(char *args) {
 // Spawns path with the given argv, waits for it and optionally reports the
 // exit status.  report_status selects the "run" wording on failure.
 //-------------------------------------------------------------------------------------
-static int32_t run_program(uint32_t path, char *const *argv, int report_status) {
+static int32_t run_program(uint32_t path, char *const *argv,
+                           int report_status) {
   int32_t pid = syscall3(SYS_SPAWN, path, (uint32_t)(uintptr_t)argv, 0U);
 
   if (pid < 0) {
@@ -235,8 +271,19 @@ void _start(void) {
   write_str("========================================\n");
   write_str("Type 'help' for available commands.\n\n");
 
+  const char *sh_argv[] = {"sh", 0};
+  int32_t sh_pid = syscall3(SYS_SPAWN, (uint32_t)(uintptr_t)"/bin/sh.bin",
+                            (uint32_t)(uintptr_t)sh_argv, 0U);
+  if (sh_pid > 0) {
+    int32_t status = 0;
+    syscall3(SYS_WAIT, (uint32_t)sh_pid, (uint32_t)(uintptr_t)&status, 0U);
+    write_str("\n[init] Go shell exited (status ");
+    write_uint((uint32_t)status);
+    write_str("), dropping to fallback shell.\n");
+  }
+
   while (1) {
-    write_str("dragoon-user> ");
+    write_prompt();
     int32_t n =
         syscall3(SYS_READ, 0U, (uint32_t)(uintptr_t)line, sizeof(line) - 1U);
     if (n <= 0) {
@@ -259,6 +306,8 @@ void _start(void) {
       write_str("  help               - Show this help\n");
       write_str("  clear              - Clear screen\n");
       write_str("  meminfo            - Show free physical memory\n");
+      write_str("  pwd                - Print working directory\n");
+      write_str("  cd [path]          - Change directory (default /)\n");
       write_str("  write <path> <txt> - Create or overwrite file\n");
       write_str("  ls [path]          - List directory (runs /bin/ls.bin)\n");
       write_str("  cat [path...]      - Print files or stdin (/bin/cat.bin)\n");
@@ -282,6 +331,10 @@ void _start(void) {
       } else {
         cmd_write(line + 6);
       }
+    } else if (str_eq(argv[0], "pwd")) {
+      cmd_pwd();
+    } else if (str_eq(argv[0], "cd")) {
+      cmd_cd(argc > 1 ? argv[1] : "/");
     } else if (str_eq(argv[0], "exit")) {
       syscall3(SYS_EXIT, 0U, 0U, 0U);
     } else if (str_eq(argv[0], "run")) {
